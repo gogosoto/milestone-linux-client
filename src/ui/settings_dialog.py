@@ -23,12 +23,8 @@ class SettingsDialog(QDialog):
         form = QFormLayout(group)
 
         self._server_url = QLineEdit()
-        self._server_url.setPlaceholderText("https://vms-server.example.com")
+        self._server_url.setPlaceholderText("milestone.putnamcountytn.gov")
         form.addRow("Server URL:", self._server_url)
-
-        self._api_gateway_url = QLineEdit()
-        self._api_gateway_url.setPlaceholderText("https://vms-server.example.com/api")
-        form.addRow("API Gateway URL:", self._api_gateway_url)
 
         self._username = QLineEdit()
         form.addRow("Username:", self._username)
@@ -52,7 +48,6 @@ class SettingsDialog(QDialog):
         if self._config.servers:
             s = self._config.current_server
             self._server_url.setText(s.server_url)
-            self._api_gateway_url.setText(s.api_gateway_url)
             self._username.setText(s.username)
             self._auth_type.setCurrentText(s.auth_type)
 
@@ -61,12 +56,14 @@ class SettingsDialog(QDialog):
             url = url.strip()
             if url and not url.startswith(("http://", "https://")):
                 url = "https://" + url
+            url = url.rstrip("/")
             return url
 
+        server_url = normalize(self._server_url.text())
         return {
             "name": "default",
-            "server_url": normalize(self._server_url.text()),
-            "api_gateway_url": normalize(self._api_gateway_url.text()),
+            "server_url": server_url,
+            "api_gateway_url": server_url,
             "username": self._username.text(),
             "password": self._password.text(),
             "auth_type": self._auth_type.currentText(),
