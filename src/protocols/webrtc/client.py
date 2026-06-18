@@ -1,108 +1,104 @@
 """
 WebRTC media pipeline using aiortc
 
-Handles:
-- RTCPeerConnection lifecycle (per camera stream)
-- SDP offer/answer exchange via REST
-- ICE candidate negotiation
-- Frame capture → QImage emission
-- PTZ data channel
+Manages RTCPeerConnection lifecycle, SDP signaling, ICE negotiation,
+frame capture, and PTZ data channel.
 """
 import asyncio
 import json
-from typing import Callable
 from aiortc import RTCPeerConnection, RTCSessionDescription, RTCIceCandidate
 from aiortc.mediastreams import VideoFrame
 from PySide6.QtCore import QObject, Signal
+from PySide6.QtGui import QImage
 from src.protocols.rest_api.webrtc import WebRTCRestClient
 
 
 class WebRTCEngine(QObject):
-    """Manages a single WebRTC peer connection for one camera stream."""
+    """Single WebRTC peer connection for one camera stream."""
 
     frame_received = Signal(str, object)  # camera_id, QImage
-    connection_state_changed = Signal(str, str)  # camera_id, new_state
-    ptz_response = Signal(str, object)  # camera_id, response_data
+    connection_state_changed = Signal(str, str)  # camera_id, state
 
-    def __init__(self, rest_webrtc: WebRTCRestClient, camera_id: str,
-                 ice_servers: list[dict] | None = None):
+    def __init__(self, rest_webrtc: WebRTCRestClient, camera_id: str):
         super().__init__()
         self._rest = rest_webrtc
         self.camera_id = camera_id
         self._pc: RTCPeerConnection | None = None
         self._session_id: str | None = None
         self._data_channel = None
-        self._ice_servers = ice_servers or []
         self._candidates_seen: set[str] = set()
+        self._running = False
 
-    async def start(self, device_id: str, *, playback_time: str | None = None,
-                    speed: float | None = None, skip_gaps: bool = False,
+    async def start(self, device_id: str, *,
+                    playback_time: str | None = None,
+                    speed: float | None = None,
+                    skip_gaps: bool = False,
                     include_audio: bool = True):
-        """Full WebRTC session initiation."""
-        # 1. Create peer connection
+        """Full WebRTC session init: REST offer → answer → ICE."""
         self._pc = RTCPeerConnection()
         self._setup_handlers()
 
-        # 2. Initiate session via REST → get offer SDP
+        # 1. REST: create WebRTC session → get server SDP offer
         session = await self._rest.create_session(
-            device_id,
-            include_audio=include_audio,
-            playback_time=playback_time,
-            speed=speed,
-            skip_gaps=skip_gaps,
-            ice_servers=self._ice_servers,
+            device_id, include_audio=include_audio,
+            playback_time=playback_time, speed=speed, skip_gaps=skip_gaps,
         )
         self._session_id = session["sessionId"]
-        offer = RTCSessionDescription(
-            type="offer", sdp=session["offerSDP"]
-        )
+        offer_sdp = session.get("offerSDP", session.get("OfferSDP", ""))
+        if isinstance(offer_sdp, str):
+            offer = RTCSessionDescription(type="offer", sdp=offer_sdp)
+        elif isinstance(offer_sdp, dict):
+            offer = RTCSessionDescription(
+                type=offer_sdp.get("type", "offer"),
+                sdp=offer_sdp.get("sdp", ""),
+            )
+        else:
+            raise TypeError(f"Unexpected offerSDP type: {type(offer_sdp)}")
+
         await self._pc.setRemoteDescription(offer)
 
-        # 3. Create + set local answer
+        # 2. Create + set local SDP answer
         answer = await self._pc.createAnswer()
         await self._pc.setLocalDescription(answer)
 
-        # 4. Send answer SDP to server
-        await self._rest.update_answer_sdp(
-            self._session_id, json.dumps({"type": "answer", "sdp": answer.sdp})
+        # 3. Send answer SDP to server
+        answer_json = json.dumps({
+            "type": "answer",
+            "sdp": self._pc.localDescription.sdp,
+        })
+        await self._rest.update_answer_sdp(self._session_id, answer_json)
+
+        # 4. Start ICE candidate polling
+        self._running = True
+        asyncio.ensure_future(self._poll_ice())
+
+        # 5. Create PTZ data channel
+        self._data_channel = self._pc.createDataChannel(
+            "commands", protocol="videoos-commands"
         )
 
-        # 5. Start ICE candidate polling
-        asyncio.ensure_future(self._poll_ice_candidates())
-
-        # 6. Create data channel for PTZ
-        self._data_channel = self._pc.createDataChannel("commands", {
-            "protocol": "videoos-commands"
-        })
-
     async def stop(self):
-        """Close the peer connection."""
+        self._running = False
         if self._pc:
             await self._pc.close()
             self._pc = None
         self._session_id = None
 
-    async def send_ptz_command(self, direction: str):
-        """Send PTZ move command via WebRTC data channel."""
+    async def send_ptz(self, direction: str):
         if self._data_channel and self._data_channel.readyState == "open":
-            cmd = {
-                "ApiVersion": "1.0",
-                "type": "request",
+            self._data_channel.send(json.dumps({
+                "ApiVersion": "1.0", "type": "request",
                 "method": "ptzMove",
                 "params": {"direction": direction},
-            }
-            self._data_channel.send(json.dumps(cmd))
+            }))
 
-    async def send_aux_command(self, aux_number: str, state: bool):
-        """Send auxiliary command via data channel."""
+    async def send_aux(self, aux_number: str, state: bool):
         if self._data_channel and self._data_channel.readyState == "open":
-            cmd = {
-                "ApiVersion": "1.0",
-                "type": "request",
+            self._data_channel.send(json.dumps({
+                "ApiVersion": "1.0", "type": "request",
                 "method": "setAux",
                 "params": {"on": state, "auxNumber": aux_number},
-            }
-            self._data_channel.send(json.dumps(cmd))
+            }))
 
     def _setup_handlers(self):
         @self._pc.on("track")
@@ -110,36 +106,40 @@ class WebRTCEngine(QObject):
             if track.kind == "video":
                 while True:
                     try:
-                        frame = await track.recv()
-                        # Convert aiortc VideoFrame to QImage
+                        frame: VideoFrame = await track.recv()
                         qimg = self._frame_to_qimage(frame)
                         self.frame_received.emit(self.camera_id, qimg)
                     except Exception:
                         break
 
         @self._pc.on("iceconnectionstatechange")
-        def on_ice_state():
+        def on_ice():
             state = self._pc.iceConnectionState if self._pc else "closed"
             self.connection_state_changed.emit(self.camera_id, state)
 
-    async def _poll_ice_candidates(self):
-        """Poll server for ICE candidates (REST-based signaling)."""
-        while self._session_id and self._pc:
+        @self._pc.on("connectionstatechange")
+        def on_conn():
+            state = self._pc.connectionState if self._pc else "closed"
+            self.connection_state_changed.emit(self.camera_id, state)
+
+    async def _poll_ice(self):
+        """Poll server for ICE candidates (every 500ms)."""
+        while self._running and self._session_id and self._pc:
             try:
                 data = await self._rest.get_ice_candidates(self._session_id)
                 candidates = data.get("candidates", [])
-                for candidate_str in candidates:
-                    if candidate_str not in self._candidates_seen:
-                        self._candidates_seen.add(candidate_str)
-                        candidate_dict = json.loads(candidate_str)
+                for c_str in candidates:
+                    if c_str not in self._candidates_seen:
+                        self._candidates_seen.add(c_str)
+                        cd = json.loads(c_str) if isinstance(c_str, str) else c_str
                         candidate = RTCIceCandidate(
-                            component=candidate_dict.get("component", 1),
-                            foundation=candidate_dict.get("foundation", "0"),
-                            ip=candidate_dict.get("ip", ""),
-                            port=candidate_dict.get("port", 0),
-                            priority=candidate_dict.get("priority", 0),
-                            protocol=candidate_dict.get("protocol", "udp"),
-                            type=candidate_dict.get("type", "host"),
+                            component=cd.get("component", 1),
+                            foundation=cd.get("foundation", "0"),
+                            ip=cd.get("ip", ""),
+                            port=cd.get("port", 0),
+                            priority=cd.get("priority", 0),
+                            protocol=cd.get("protocol", "udp"),
+                            type=cd.get("type", "host"),
                         )
                         await self._pc.addIceCandidate(candidate)
             except Exception:
@@ -147,18 +147,16 @@ class WebRTCEngine(QObject):
             await asyncio.sleep(0.5)
 
     @staticmethod
-    def _frame_to_qimage(frame: VideoFrame) -> object:
+    def _frame_to_qimage(frame: VideoFrame) -> QImage:
         """Convert aiortc VideoFrame to QImage."""
-        from PIL import Image
-        import io
-        from PySide6.QtGui import QImage
-
-        # aiortc frames are numpy arrays (yuv420p by default)
         img = frame.to_image()  # returns PIL Image
-        # Convert PIL → QImage
-        with io.BytesIO() as buf:
-            img.save(buf, format="RGB")
-            buf.seek(0)
-            qimg = QImage()
-            qimg.loadFromData(buf.read(), "RGB")
-        return qimg
+        if img.mode == "RGB":
+            data = img.tobytes("raw", "RGB")
+            return QImage(data, img.width, img.height, QImage.Format_RGB888)
+        elif img.mode == "RGBA":
+            data = img.tobytes("raw", "RGBA")
+            return QImage(data, img.width, img.height, QImage.Format_RGBA8888)
+        else:
+            img = img.convert("RGB")
+            data = img.tobytes("raw", "RGB")
+            return QImage(data, img.width, img.height, QImage.Format_RGB888)

@@ -1,10 +1,11 @@
 [project]
 name = "milestone-linux-client"
 version = "0.1.0"
-description = "Native Linux client for Milestone XProtect VMS — full Smart Client feature parity"
+description = "Native Linux desktop client for Milestone XProtect VMS — full Smart Client feature parity"
 requires-python = ">=3.11"
 dependencies = [
     "PySide6>=6.8",
+    "qasync>=0.27",
     "httpx>=0.28",
     "aiortc>=1.9",
     "av>=13.0",
