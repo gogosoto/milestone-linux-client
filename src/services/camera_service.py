@@ -1,21 +1,20 @@
 """
-Camera service — fetches camera list via REST Config API, builds tree
+Camera service — fetches camera tree via REST Config API
 """
 from src.protocols.rest_api.config import ConfigAPI
-from src.protocols.mobile_xmlrpc.connection import MobileConnection
+from src.protocols.bridge.client import BridgeClient
 from src.models import Camera, CameraGroup
 
 
 class CameraService:
-    def __init__(self, mobile: MobileConnection, config: ConfigAPI):
-        self._mobile = mobile
-        self._config = config
+    def __init__(self, config_api: ConfigAPI, bridge: BridgeClient | None = None):
+        self._config = config_api
+        self._bridge = bridge
         self._cameras: dict[str, Camera] = {}
 
     async def refresh(self) -> CameraGroup:
         """Fetch all cameras from the REST Config API."""
         raw = await self._config.get_cameras()
-        # REST Config API returns different formats depending on server version
         items = raw.get("value", raw if isinstance(raw, list) else [])
         root = CameraGroup(id="root", name="All Cameras")
         for item in items:
@@ -23,7 +22,10 @@ class CameraService:
                 id=item.get("ItemId", item.get("Id", "")),
                 name=item.get("DisplayName", item.get("Name", "")),
                 device_id=item.get("DeviceId", item.get("Id", "")),
-                is_ptz=item.get("PTZ", False),
+                is_ptz=item.get("PTZ", item.get("Ptz", False)),
+                is_online=item.get("Online", True),
+                recording_server_id=item.get("RecordingServerId", ""),
+                ip_address=item.get("Address", ""),
             )
             if cam.id:
                 root.cameras.append(cam)

@@ -1,31 +1,32 @@
 """
 Sequencing / Tour service
+
+In the desktop Smart Client, sequences and tours are managed
+through the .NET SDK (via bridge) or configured on the server.
+A basic tour cycles through cameras in a view.
+
+For Phase 1, this is a placeholder — sequenced views are a
+. NET SDK feature. The Linux client will implement camera cycling
+at the UI level by changing which camera each grid slot shows.
 """
-from src.protocols.mobile_xmlrpc.connection import MobileConnection
+from src.protocols.bridge.client import BridgeClient
 
 
 class SequencingService:
-    def __init__(self, mobile: MobileConnection):
-        self._mobile = mobile
-        self._active_sequence_id: str | None = None
-        self._is_carousel: bool = False
+    def __init__(self, bridge: BridgeClient | None = None):
+        self._bridge = bridge
+        self._active = False
+        self._timer_interval = 10  # seconds
 
-    async def next_in_sequence(self, view_id: str) -> dict:
-        result = await self._mobile.get_next_sequence(view_id)
-        return result
+    async def start_sequence(self, camera_ids: list[str]):
+        """Cycle through cameras at interval — implemented client-side."""
+        self._active = True
+        self._camera_ids = camera_ids
+        self._current_index = 0
 
-    async def prev_in_sequence(self, view_id: str) -> dict:
-        result = await self._mobile.get_prev_sequence(view_id)
-        return result
+    async def stop_sequence(self):
+        self._active = False
 
-    async def carousel_next(self):
-        await self._mobile.carousel_next()
-
-    async def carousel_prev(self):
-        await self._mobile.carousel_prev()
-
-    async def carousel_pause(self):
-        await self._mobile.carousel_pause()
-
-    async def carousel_resume(self):
-        await self._mobile.carousel_resume()
+    @property
+    def is_active(self) -> bool:
+        return self._active
