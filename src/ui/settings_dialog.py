@@ -57,10 +57,16 @@ class SettingsDialog(QDialog):
             self._auth_type.setCurrentText(s.auth_type)
 
     def get_config(self) -> dict:
+        def normalize(url: str) -> str:
+            url = url.strip()
+            if url and not url.startswith(("http://", "https://")):
+                url = "https://" + url
+            return url
+
         return {
             "name": "default",
-            "server_url": self._server_url.text(),
-            "api_gateway_url": self._api_gateway_url.text(),
+            "server_url": normalize(self._server_url.text()),
+            "api_gateway_url": normalize(self._api_gateway_url.text()),
             "username": self._username.text(),
             "password": self._password.text(),
             "auth_type": self._auth_type.currentText(),
