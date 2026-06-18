@@ -1,5 +1,5 @@
 """
-Camera service — fetches camera tree via REST Config API
+Camera service — fetches camera list from Hardware endpoint
 """
 from src.protocols.rest_api.config import ConfigAPI
 from src.protocols.bridge.client import BridgeClient
@@ -13,19 +13,19 @@ class CameraService:
         self._cameras: dict[str, Camera] = {}
 
     async def refresh(self) -> CameraGroup:
-        """Fetch all cameras from the REST Config API."""
-        raw = await self._config.get_cameras()
-        items = raw.get("value", raw if isinstance(raw, list) else [])
+        """Fetch all hardware devices from the REST API."""
+        items = await self._config.get_hardware()
         root = CameraGroup(id="root", name="All Cameras")
         for item in items:
             cam = Camera(
-                id=item.get("ItemId", item.get("Id", "")),
-                name=item.get("DisplayName", item.get("Name", "")),
-                device_id=item.get("DeviceId", item.get("Id", "")),
-                is_ptz=item.get("PTZ", item.get("Ptz", False)),
-                is_online=item.get("Online", True),
-                recording_server_id=item.get("RecordingServerId", ""),
-                ip_address=item.get("Address", ""),
+                id=item.get("id", ""),
+                name=item.get("displayName", item.get("name", "")),
+                device_id=item.get("id", ""),
+                is_ptz=item.get("ptz", item.get("PTZ", False)),
+                is_online=item.get("enabled", True),
+                recording_server_id=item.get("relations", {}).get("parent", {}).get("id", ""),
+                ip_address=item.get("address", ""),
+                model=item.get("model", ""),
             )
             if cam.id:
                 root.cameras.append(cam)

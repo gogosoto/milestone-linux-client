@@ -1,5 +1,8 @@
 """
-Base REST API client for the API Gateway
+Base REST API client for Milestone API Gateway
+
+Handles authentication, token refresh, and the OData JSON format
+used by Milestone's REST API.
 """
 import httpx
 from src.core.auth import AuthManager
@@ -29,7 +32,8 @@ class RestClient:
         url = f"{self.base_url}{path}"
         headers = kwargs.pop("headers", {})
         headers.setdefault("Authorization", f"Bearer {self.auth.token}")
-        headers.setdefault("Content-Type", "application/json")
+        if "Content-Type" not in headers:
+            headers["Content-Type"] = "application/json"
 
         resp = await self._client.request(method, url, headers=headers, **kwargs)
         if resp.status_code == 401:
@@ -38,6 +42,18 @@ class RestClient:
             resp = await self._client.request(method, url, headers=headers, **kwargs)
         resp.raise_for_status()
         return resp
+
+    async def get_entities(self, resource: str, **params) -> list[dict]:
+        """Get all entities of a resource, handling next page links."""
+        items = []
+        path = f"/api/REST/v1/{resource}"
+        while path:
+            resp = await self.get(path, params=params)
+            data = resp.json()
+            items.extend(data.get("array", data.get("value", [])))
+            links = data.get("_links", {})
+            path = links.get("next", {}).get("href") if isinstance(links, dict) else None
+        return items
 
     async def close(self):
         await self._client.aclose()
