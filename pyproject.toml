@@ -1,0 +1,22 @@
+[project]
+name = "milestone-linux-client"
+version = "0.1.0"
+description = "Native Linux client for Milestone XProtect VMS — full Smart Client feature parity"
+requires-python = ">=3.11"
+dependencies = [
+    "PySide6>=6.8",
+    "httpx>=0.28",
+    "aiortc>=1.9",
+    "av>=13.0",
+    "websockets>=14.0",
+    "grpcio>=1.68",
+    "grpcio-tools>=1.68",
+    "onvif-zeep>=1.0",
+    "cryptography>=44.0",
+    "pyyaml>=6.0",
+    "Pillow>=11.0",
+    "qtawesome>=1.4",
+]
+
+[project.scripts]
+milestone-client = "src.main:main"

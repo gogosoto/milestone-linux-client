@@ -1,0 +1,264 @@
+syntax = "proto3";
+
+package milestone_bridge;
+
+service MilestoneBridge {
+    // Smart Search
+    rpc StartMotionSearch(MotionSearchRequest) returns (MotionSearchResult);
+    rpc GetMotionSearchProgress(ProgressRequest) returns (ProgressResponse);
+
+    // Evidence Lock
+    rpc LockEvidence(EvidenceRequest) returns (EvidenceResponse);
+    rpc UnlockEvidence(EvidenceRequest) returns (EvidenceResponse);
+    rpc GetLockedEvidence(EvidenceListRequest) returns (EvidenceListResponse);
+
+    // Privacy Masking
+    rpc GetRestrictedMedia(RestrictedMediaRequest) returns (RestrictedMediaResponse);
+
+    // Hardware Management
+    rpc ScanHardware(HardwareScanRequest) returns (HardwareScanResponse);
+    rpc AddHardware(HardwareAddRequest) returns (HardwareAddResponse);
+    rpc RemoveHardware(HardwareRemoveRequest) returns (Empty);
+    rpc FirmwareUpdate(FirmwareRequest) returns (FirmwareResponse);
+
+    // System
+    rpc GetSystemLogs(LogQuery) returns (LogResponse);
+    rpc GetSystemStatus(Empty) returns (SystemStatusResponse);
+    rpc GetRecordingServerStatus(Empty) returns (RecordingServerStatus);
+
+    // Video Wall
+    rpc GetVideoWalls(Empty) returns (VideoWallList);
+    rpc SendToVideoWall(VideoWallCommand) returns (Empty);
+
+    // PTZ Tours/Patrols
+    rpc GetPatrols(PatrolQuery) returns (PatrolList);
+    rpc StartPatrol(PatrolCommand) returns (Empty);
+    rpc StopPatrol(PatrolCommand) returns (Empty);
+}
+
+message Empty {}
+
+message MotionSearchRequest {
+    string server_url = 1;
+    string username = 2;
+    string password = 3;
+    string camera_id = 4;
+    double start_time = 5;
+    double end_time = 6;
+    double roi_x = 7;
+    double roi_y = 8;
+    double roi_w = 9;
+    double roi_h = 10;
+}
+
+message MotionSearchResult {
+    string task_id = 1;
+    bool started = 2;
+}
+
+message ProgressRequest {
+    string task_id = 1;
+}
+
+message ProgressResponse {
+    double progress = 1;
+    repeated MotionResultItem results = 2;
+}
+
+message MotionResultItem {
+    double timestamp = 1;
+    double x = 2;
+    double y = 3;
+    double w = 4;
+    double h = 5;
+    double confidence = 6;
+}
+
+message EvidenceRequest {
+    string server_url = 1;
+    string username = 2;
+    string password = 3;
+    string camera_id = 4;
+    double start_time = 5;
+    double end_time = 6;
+    string description = 7;
+}
+
+message EvidenceResponse {
+    bool success = 1;
+    string evidence_id = 2;
+    string error = 3;
+}
+
+message EvidenceListRequest {
+    string server_url = 1;
+    string username = 2;
+    string password = 3;
+}
+
+message EvidenceListResponse {
+    repeated EvidenceItem items = 1;
+}
+
+message EvidenceItem {
+    string id = 1;
+    string camera_id = 2;
+    string description = 3;
+    double start_time = 4;
+    double end_time = 5;
+    bool locked = 6;
+}
+
+message RestrictedMediaRequest {
+    string server_url = 1;
+    string username = 2;
+    string password = 3;
+    string camera_id = 4;
+}
+
+message RestrictedMediaResponse {
+    bool has_restrictions = 1;
+    string restriction_info = 2;
+}
+
+message HardwareScanRequest {
+    string server_url = 1;
+    string username = 2;
+    string password = 3;
+    string ip_range = 4;
+    string recording_server_id = 5;
+}
+
+message HardwareScanResponse {
+    repeated DiscoveredDevice devices = 1;
+}
+
+message DiscoveredDevice {
+    string ip = 1;
+    string name = 2;
+    string manufacturer = 3;
+    string model = 4;
+    string driver = 5;
+}
+
+message HardwareAddRequest {
+    string server_url = 1;
+    string username = 2;
+    string password = 3;
+    string recording_server_id = 4;
+    string ip = 5;
+    string username_on_device = 6;
+    string password_on_device = 7;
+    string driver_id = 8;
+    string hardware_name = 9;
+}
+
+message HardwareAddResponse {
+    bool success = 1;
+    string hardware_id = 2;
+    string error = 3;
+}
+
+message HardwareRemoveRequest {
+    string server_url = 1;
+    string username = 2;
+    string password = 3;
+    string hardware_id = 4;
+}
+
+message FirmwareRequest {
+    string server_url = 1;
+    string username = 2;
+    string password = 3;
+    string hardware_id = 4;
+    string firmware_path = 5;
+}
+
+message FirmwareResponse {
+    bool success = 1;
+    string task_id = 2;
+    string error = 3;
+}
+
+message LogQuery {
+    string server_url = 1;
+    string username = 2;
+    string password = 3;
+    int32 max_entries = 4;
+    string level = 5;
+}
+
+message LogResponse {
+    repeated LogEntry entries = 1;
+}
+
+message LogEntry {
+    double timestamp = 1;
+    string level = 2;
+    string source = 3;
+    string message = 4;
+}
+
+message SystemStatusResponse {
+    string status = 1;
+    double cpu_usage = 2;
+    double memory_usage = 3;
+    double disk_usage = 4;
+    int32 active_sessions = 5;
+}
+
+message RecordingServerStatus {
+    string id = 1;
+    string name = 2;
+    string status = 3;
+    double cpu = 4;
+    double memory = 5;
+    double storage = 6;
+}
+
+message VideoWallList {
+    repeated VideoWall items = 1;
+}
+
+message VideoWall {
+    string id = 1;
+    string name = 2;
+    int32 width = 3;
+    int32 height = 4;
+}
+
+message VideoWallCommand {
+    string server_url = 1;
+    string username = 2;
+    string password = 3;
+    string video_wall_id = 4;
+    string camera_id = 5;
+    int32 monitor_index = 6;
+    string command_type = 7;
+}
+
+message PatrolQuery {
+    string server_url = 1;
+    string username = 2;
+    string password = 3;
+    string camera_id = 4;
+}
+
+message PatrolList {
+    repeated Patrol items = 1;
+}
+
+message Patrol {
+    string id = 1;
+    string name = 2;
+    int32 presets_count = 3;
+}
+
+message PatrolCommand {
+    string server_url = 1;
+    string username = 2;
+    string password = 3;
+    string camera_id = 4;
+    string patrol_id = 5;
+    string recording_server_id = 6;
+}

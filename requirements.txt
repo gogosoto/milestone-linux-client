@@ -1,0 +1,18 @@
+# Core
+PySide6>=6.8
+httpx>=0.28
+aiortc>=1.9
+av>=13.0
+websockets>=14.0
+grpcio>=1.68
+grpcio-tools>=1.68
+onvif-zeep>=1.0
+cryptography>=44.0
+
+# Utilities
+pyyaml>=6.0
+Pillow>=11.0
+qtawesome>=1.4
+
+# Dev
+pytest>=8.0
